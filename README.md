@@ -6,6 +6,14 @@
 
 3. Concurrency
 
-4. Expiration
+4. GC control
 
-5. GC control
+5. Expiration (optional)
+
+# Milestone
+
+1. Basic
+
+2. Hash
+
+3. Entry to Memory
