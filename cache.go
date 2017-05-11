@@ -6,49 +6,43 @@ import (
 	"time"
 )
 
-type Item struct {
-	Object   interface{}
-	listElem *list.Element
+type Pair struct {
+	Object interface{}
+	key    string
 }
 
 type ObjCache struct {
-	items     map[string]Item
 	mu        sync.RWMutex
+	items     map[string]*list.Element
 	list      *list.List
 	itemCount int
 	config    Config
 }
 
 func (c *ObjCache) removeOldest() {
+	c.itemCount = c.itemCount - 1
 	elem := c.list.Front()
-	key := c.list.Remove(elem).(string)
-	delete(c.items, key)
+	v := elem.Value.(Pair)
+	delete(c.items, v.key)
+	c.list.Remove(elem)
 }
 
 func (c *ObjCache) Set(k string, x interface{}, d time.Duration) error {
 	c.mu.Lock()
 
 	if _, ok := c.items[k]; !ok {
-		if c.itemCount+1 > c.config.MaxEntryLimit {
-			c.itemCount = c.itemCount - 1
+		if c.itemCount >= c.config.MaxEntryLimit {
 			c.removeOldest()
 		}
 
-		elem := c.list.PushBack(k)
-
-		c.items[k] = Item{
-			Object:   x,
-			listElem: elem,
+		p := Pair{
+			Object: x,
+			key:    k,
 		}
-
+		c.items[k] = c.list.PushBack(p)
 		c.itemCount = c.itemCount + 1
 	} else {
-		c.list.MoveToBack(c.items[k].listElem)
-
-		c.items[k] = Item{
-			Object:   x,
-			listElem: c.items[k].listElem,
-		}
+		c.list.MoveToBack(c.items[k])
 	}
 
 	c.mu.Unlock()
@@ -57,30 +51,31 @@ func (c *ObjCache) Set(k string, x interface{}, d time.Duration) error {
 
 func (c *ObjCache) Get(k string) (interface{}, bool) {
 	c.mu.RLock()
-	item, ok := c.items[k]
-
+	elem, ok := c.items[k]
 	if !ok {
 		c.mu.RUnlock()
 		return nil, false
 	}
 	c.mu.RUnlock()
-	return item.Object, true
+	return elem.Value.(Pair).Object, true
 }
 
 func (c *ObjCache) Del(k string) bool {
-	if item, ok := c.items[k]; ok {
-		elem := item.listElem
-		c.list.Remove(elem)
+	c.mu.Lock()
+	item, ok := c.items[k]
+	if ok {
+		c.itemCount = c.itemCount - 1
 		delete(c.items, k)
-		return true
+		c.list.Remove(item)
 	}
-	return false
+	c.mu.Unlock()
+	return ok
 }
 
 func New(config Config) (*ObjCache, error) {
 	l := list.New()
 	cache := &ObjCache{
-		items:     make(map[string]Item),
+		items:     make(map[string]*list.Element),
 		itemCount: 0,
 		list:      l,
 		config:    config,

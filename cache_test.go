@@ -1,7 +1,6 @@
 package objcache
 
 import (
-	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -13,7 +12,7 @@ type ForTest struct {
 
 func BenchmarkSimple(b *testing.B) {
 	myconfig := Config{
-		MaxEntryLimit: 200000,
+		MaxEntryLimit: 100000,
 		Expiration:    5 * time.Minute,
 	}
 	cache, err := New(myconfig)
@@ -48,21 +47,21 @@ func BenchmarkSimple(b *testing.B) {
 				x := strconv.Itoa(xx)
 				_, ok := cache.Get(x)
 				aa := ForTest{
-					value: strconv.Itoa(j*11 + i),
+					value: strconv.Itoa(j*12 + i),
 				}
-				cache.Set(strconv.Itoa(j*11+i), &aa, 10*time.Minute)
+				cache.Set(strconv.Itoa(j*12+i), &aa, 10*time.Minute)
+				cache.Del(strconv.Itoa(j*12 + i))
 				if !ok {
 					continue
 				}
-
 			}
 			k <- 1
 		}(i)
 	}
 
 	for j := 0; j < 11; j = j + 1 {
-		c := <-k
-		fmt.Println(c)
+		<-k
+		//fmt.Println(c)
 	}
 	//fmt.Println(time.Now().UnixNano())
 }
