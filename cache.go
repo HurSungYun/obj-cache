@@ -6,8 +6,9 @@ import (
 	"time"
 )
 
-type Pair struct {
+type pair struct {
 	Object interface{}
+	expire int64
 	key    string
 }
 
@@ -19,25 +20,50 @@ type ObjCache struct {
 	config    Config
 }
 
+func (c *ObjCache) removeExpired() {
+	e := time.Now().UnixNano()
+	for {
+		elem := c.list.Front()
+		if elem == nil {
+			break
+		}
+		v := elem.Value.(pair)
+		if v.expire < e {
+			c.itemCount = c.itemCount - 1
+			delete(c.items, v.key)
+			c.list.Remove(elem)
+		} else {
+			break
+		}
+	}
+}
+
 func (c *ObjCache) removeOldest() {
 	c.itemCount = c.itemCount - 1
 	elem := c.list.Front()
-	v := elem.Value.(Pair)
+	v := elem.Value.(pair)
 	delete(c.items, v.key)
 	c.list.Remove(elem)
 }
 
 func (c *ObjCache) Set(k string, x interface{}, d time.Duration) error {
+	if d == 0 {
+		d = c.config.Expiration
+	}
 	c.mu.Lock()
 
 	if _, ok := c.items[k]; !ok {
+
+		c.removeExpired()
+
 		if c.itemCount >= c.config.MaxEntryLimit {
 			c.removeOldest()
 		}
 
-		p := Pair{
+		p := pair{
 			Object: x,
 			key:    k,
+			expire: time.Now().Add(d).UnixNano(),
 		}
 		c.items[k] = c.list.PushBack(p)
 		c.itemCount = c.itemCount + 1
@@ -53,11 +79,12 @@ func (c *ObjCache) Get(k string) (interface{}, bool) {
 	c.mu.RLock()
 	elem, ok := c.items[k]
 	if !ok {
+		//TODO: delete if expired
 		c.mu.RUnlock()
 		return nil, false
 	}
 	c.mu.RUnlock()
-	return elem.Value.(Pair).Object, true
+	return elem.Value.(pair).Object, true
 }
 
 func (c *ObjCache) Del(k string) bool {
