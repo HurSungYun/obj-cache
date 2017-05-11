@@ -1,77 +1,31 @@
 package objcache
 
 import (
-	"container/heap"
+	"container/list"
 	"sync"
 	"time"
 )
 
-type KeyIndex struct {
-	key        string
-	Expiration int64
-	index      int
-}
-
-type PriorityQueue []*KeyIndex
-
-func (pq PriorityQueue) Len() int { return len(pq) }
-
-func (pq PriorityQueue) Less(i, j int) bool {
-	return pq[i].Expiration < pq[j].Expiration
-}
-
-func (pq PriorityQueue) Swap(i, j int) {
-	pq[i], pq[j] = pq[j], pq[i]
-	pq[i].index = i
-	pq[i].index = j
-}
-
-func (pq *PriorityQueue) Push(x interface{}) {
-	n := len(*pq)
-	item := x.(*KeyIndex)
-	item.index = n
-	*pq = append(*pq, item)
-}
-
-func (pq *PriorityQueue) Pop() interface{} {
-	old := *pq
-	n := len(old)
-	item := old[n-1]
-	item.index = -1 // for safety
-	*pq = old[0 : n-1]
-	return item
-}
-
-func (pq *PriorityQueue) update(item *KeyIndex, value string, priority int64) {
-	item.key = value
-	item.Expiration = priority
-	heap.Fix(pq, item.index)
-}
-
 type Item struct {
-	Object interface{}
-	prior  *KeyIndex
-}
-
-func (item Item) expired() bool {
-	return item.prior.Expiration != 0 && time.Now().UnixNano() > item.prior.Expiration
+	Object   interface{}
+	listElem *list.Element
 }
 
 type ObjCache struct {
 	items     map[string]Item
 	mu        sync.RWMutex
-	heap      *PriorityQueue
+	list      *list.List
 	itemCount int
 	config    Config
 }
 
 func (c *ObjCache) removeOldest() {
-	target := heap.Pop(c.heap).(*KeyIndex)
-	delete(c.items, target.key)
+	elem := c.list.Front()
+	key := c.list.Remove(elem).(string)
+	delete(c.items, key)
 }
 
 func (c *ObjCache) Set(k string, x interface{}, d time.Duration) error {
-	e := time.Now().Add(d).UnixNano()
 	c.mu.Lock()
 
 	if _, ok := c.items[k]; !ok {
@@ -80,24 +34,20 @@ func (c *ObjCache) Set(k string, x interface{}, d time.Duration) error {
 			c.removeOldest()
 		}
 
-		ki := &KeyIndex{
-			key:        k,
-			Expiration: e,
-		}
-
-		heap.Push(c.heap, ki)
+		elem := c.list.PushBack(k)
 
 		c.items[k] = Item{
-			Object: x,
-			prior:  ki,
+			Object:   x,
+			listElem: elem,
 		}
 
 		c.itemCount = c.itemCount + 1
 	} else {
-		c.heap.update(c.items[k].prior, k, e)
+		c.list.MoveToBack(c.items[k].listElem)
+
 		c.items[k] = Item{
-			Object: x,
-			prior:  c.items[k].prior,
+			Object:   x,
+			listElem: c.items[k].listElem,
 		}
 	}
 
@@ -117,13 +67,22 @@ func (c *ObjCache) Get(k string) (interface{}, bool) {
 	return item.Object, true
 }
 
+func (c *ObjCache) Del(k string) bool {
+	if item, ok := c.items[k]; ok {
+		elem := item.listElem
+		c.list.Remove(elem)
+		delete(c.items, k)
+		return true
+	}
+	return false
+}
+
 func New(config Config) (*ObjCache, error) {
-	pq := make(PriorityQueue, 0)
-	heap.Init(&pq)
+	l := list.New()
 	cache := &ObjCache{
 		items:     make(map[string]Item),
 		itemCount: 0,
-		heap:      &pq,
+		list:      l,
 		config:    config,
 	}
 	return cache, nil
