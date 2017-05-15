@@ -12,6 +12,8 @@ type pair struct {
 	key    string
 }
 
+// ObjCache is a struct for managing cache.
+// If a user call objcache.New(), returns an instance of this struct.
 type ObjCache struct {
 	mu        sync.RWMutex
 	items     map[string]*list.Element
@@ -46,6 +48,7 @@ func (c *ObjCache) removeOldest() {
 	c.list.Remove(elem)
 }
 
+// Set a value for key. if d is 0, the Expiration time would be default time.
 func (c *ObjCache) Set(k string, x interface{}, d time.Duration) error {
 	if d == 0 {
 		d = c.config.Expiration
@@ -75,18 +78,28 @@ func (c *ObjCache) Set(k string, x interface{}, d time.Duration) error {
 	return nil
 }
 
+// Get the object of key.
 func (c *ObjCache) Get(k string) (interface{}, bool) {
 	c.mu.RLock()
 	elem, ok := c.items[k]
 	if !ok {
-		//TODO: delete if expired
+		c.mu.RUnlock()
+		return nil, false
+	}
+	v := elem.Value.(pair)
+
+	if v.expire < time.Now().UnixNano() {
+		c.itemCount = c.itemCount - 1
+		delete(c.items, k)
+		c.list.Remove(elem)
 		c.mu.RUnlock()
 		return nil, false
 	}
 	c.mu.RUnlock()
-	return elem.Value.(pair).Object, true
+	return v.Object, true
 }
 
+// Del delete an item for some key.
 func (c *ObjCache) Del(k string) bool {
 	c.mu.Lock()
 	item, ok := c.items[k]
@@ -99,6 +112,7 @@ func (c *ObjCache) Del(k string) bool {
 	return ok
 }
 
+// New makes an cache object and returns it.
 func New(config Config) (*ObjCache, error) {
 	l := list.New()
 	cache := &ObjCache{
