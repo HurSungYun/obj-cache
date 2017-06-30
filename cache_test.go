@@ -59,7 +59,5 @@ func BenchmarkSimple(b *testing.B) {
 
 	for j := 0; j < 11; j = j + 1 {
 		<-k
-		//fmt.Println(c)
 	}
-	//fmt.Println(time.Now().UnixNano())
 }
