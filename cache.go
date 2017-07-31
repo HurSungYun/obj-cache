@@ -49,9 +49,12 @@ func (c *ObjCache) removeOldest() {
 }
 
 // Set a value for key. if d is 0, the Expiration time would be default time.
-func (c *ObjCache) Set(k string, x interface{}, d time.Duration) error {
-	if d == 0 {
-		d = c.config.Expiration
+func (c *ObjCache) Set(k string, x interface{}, d ...time.Duration) error {
+	var duration time.Duration
+	if len(d) > 0 {
+		duration = d[0]
+	} else {
+		duration = c.config.Expiration
 	}
 	c.mu.Lock()
 
@@ -66,7 +69,7 @@ func (c *ObjCache) Set(k string, x interface{}, d time.Duration) error {
 		p := pair{
 			Object: x,
 			key:    k,
-			expire: time.Now().Add(d).UnixNano(),
+			expire: time.Now().Add(duration).UnixNano(),
 		}
 		c.items[k] = c.list.PushBack(p)
 		c.itemCount = c.itemCount + 1

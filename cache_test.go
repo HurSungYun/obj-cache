@@ -26,9 +26,9 @@ func BenchmarkSimple(b *testing.B) {
 
 	//fmt.Println(time.Now().UnixNano())
 
-	cache.Set("1", &a, 10*time.Minute)
-	cache.Set("2", &a, 10*time.Minute)
-	cache.Set("3", &a, 10*time.Minute)
+	cache.Set("1", &a)
+	cache.Set("2", &a)
+	cache.Set("3", &a)
 	cache.Set("4", &a, 10*time.Minute)
 	cache.Set("1", &a, 10*time.Minute)
 	cache.Set("5", &a, 10*time.Minute)
